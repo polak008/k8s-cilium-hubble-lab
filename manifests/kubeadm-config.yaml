@@ -1,0 +1,23 @@
+# kubeadm configuration for a single-node control-plane cluster
+# with kube-proxy disabled (Cilium replaces it).
+#
+# IMPORTANT: Update advertiseAddress and controlPlaneEndpoint
+# to match your node's IP before running:
+#   sudo kubeadm init --config=manifests/kubeadm-config.yaml
+
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: "10.0.2.11"
+  bindPort: 6443
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+kubernetesVersion: v1.34.2
+networking:
+  dnsDomain: cluster.local
+  podSubnet: 10.0.0.0/8
+  serviceSubnet: 10.96.0.0/12
+proxy:
+  disabled: true
+controlPlaneEndpoint: "10.0.2.11:6443"

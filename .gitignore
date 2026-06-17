@@ -1,0 +1,17 @@
+# kubeconfig and credentials — never commit these
+*.kubeconfig
+admin.conf
+kubeadm-config.yaml.local
+
+# Helm
+*.tgz
+
+# OS
+.DS_Store
+
+# Editor
+*.swp
+*.swo
+
+# Generated tokens / secrets
+*token*.txt

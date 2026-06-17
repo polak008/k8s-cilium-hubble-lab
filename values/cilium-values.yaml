@@ -1,0 +1,24 @@
+# Cilium Helm values for this cluster.
+# Apply with:
+#   helm upgrade --install cilium cilium/cilium -n kube-system -f values/cilium-values.yaml
+#
+# NOTE: k8sServiceHost must match your control-plane node's IP.
+
+cluster:
+  name: kubernetes
+
+kubeProxyReplacement: true
+routingMode: tunnel
+tunnelProtocol: vxlan
+
+k8sServiceHost: 10.0.2.11
+k8sServicePort: 6443
+
+operator:
+  replicas: 1
+
+hubble:
+  relay:
+    enabled: true
+  ui:
+    enabled: true

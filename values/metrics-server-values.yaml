@@ -1,0 +1,13 @@
+# Metrics Server Helm values for this cluster.
+# Apply with:
+#   helm upgrade --install metrics-server metrics-server/metrics-server \
+#     -n kube-system -f values/metrics-server-values.yaml
+#
+# kubelet-insecure-tls is required because kubelet serving
+# certs in this cluster are self-signed / not in the
+# apiserver's trust chain.
+
+args:
+  - --kubelet-insecure-tls
+  - --kubelet-preferred-address-types=InternalIP,Hostname
+  - --metric-resolution=15s
