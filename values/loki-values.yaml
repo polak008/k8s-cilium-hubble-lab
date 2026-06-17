@@ -1,0 +1,52 @@
+# Loki Helm values — single-binary "all-in-one" mode.
+#
+# This is the configuration that actually worked after many iterations
+# (see loki-values.yaml through loki-values-08.yaml in the project history
+# for the failed attempts — mainly caused by the chart's default
+# "scalable" target requiring object storage / multiple replicas, which
+# isn't needed for a single-node lab).
+#
+# Apply with:
+#   helm upgrade --install loki grafana/loki \
+#     --namespace loki-system --create-namespace \
+#     -f values/loki-values.yaml
+#
+# Loki ends up reachable at: http://<node-ip>:3100 (ClusterIP by default —
+# see scripts/07-install-loki-alloy.sh for how this cluster exposes it)
+
+# Single-binary mode: one Loki process does ingestion, storage, and
+# querying. This avoids the "Cannot run scalable target" error that the
+# chart throws when read/write/backend components are left at their
+# defaults without the storage backend they expect.
+target: all-in-one
+
+loki:
+  auth_enabled: false
+  storage:
+    type: filesystem
+  schemaConfig:
+    configs:
+      - from: "2020-10-24"
+        store: boltdb-shipper
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+
+# Disable every other component the chart would otherwise try to deploy.
+# In all-in-one mode these are all handled by the single Loki process —
+# leaving them at chart defaults is what caused most of the failed
+# iterations in this project's history.
+read:
+  enabled: false
+write:
+  enabled: false
+backend:
+  enabled: false
+gateway:
+  enabled: false
+enterprise:
+  enabled: false
+persistence:
+  enabled: false

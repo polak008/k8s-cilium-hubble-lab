@@ -1,0 +1,65 @@
+# kube-prometheus-stack Helm values.
+#
+# This deploys Prometheus + the Prometheus Operator + node-exporter +
+# kube-state-metrics, with Grafana and Alertmanager disabled (this
+# cluster visualizes everything through a separate, externally-hosted
+# Grafana instance instead — see the grafana-alloy-logs-dashboard.json
+# dashboard for the Loki/Alloy side).
+#
+# IMPORTANT: prometheusOperator.enabled MUST be true. Several early
+# attempts in this project's history omitted it (relying on chart
+# defaults) and ended up with a Prometheus StatefulSet that never
+# reconciled correctly. Setting it explicitly fixed that.
+#
+# IMPORTANT: update the remoteWrite URL to match wherever your remote
+# storage (e.g. a separate Prometheus / Mimir / Thanos instance) is
+# reachable from. This cluster wrote to 192.168.56.116:9090 on a
+# separate host/VM.
+#
+# Apply with:
+#   helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
+#     --namespace prometheus --create-namespace \
+#     -f values/prometheus-values.yaml
+
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    retention: 24h
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+
+    remoteWrite:
+      - url: http://192.168.56.116:9090/api/v1/write
+        queueConfig:
+          capacity: 10000
+          maxShards: 200
+          minShards: 1
+          maxSamplesPerSend: 1000
+          batchSendWait: 5s
+
+# This cluster uses an external Grafana, so the bundled one is disabled.
+grafana:
+  enabled: false
+
+# Alertmanager not used in this lab setup.
+alertmanager:
+  enabled: false
+
+# node-exporter and kube-state-metrics provide the actual node/cluster
+# metrics scraped by Prometheus — keep these enabled even with the
+# bundled Grafana/Alertmanager disabled.
+prometheus-node-exporter:
+  enabled: true
+
+kube-state-metrics:
+  enabled: true
+
+# Must be explicit — see note above.
+prometheusOperator:
+  enabled: true

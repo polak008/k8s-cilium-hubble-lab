@@ -73,3 +73,38 @@ grep sandbox_image /etc/containerd/config.toml
 grep pause /var/lib/kubelet/kubeadm-flags.env
 # Both should reference registry.k8s.io/pause:3.10.1
 ```
+
+## Loki: "Cannot run scalable target" error
+
+This means the chart is using its default scalable target, which expects
+object storage and separate read/write/backend pods. Use
+`values/loki-values.yaml` (`target: all-in-one`, `storage.type:
+filesystem`) instead — see comments in that file.
+
+## Alloy pod running but no logs reaching Loki
+
+Check Alloy's own logs for delivery errors first:
+
+```bash
+kubectl logs -n alloy-system -l app.kubernetes.io/name=alloy --tail=50
+```
+
+Common causes:
+- The `loki.write` endpoint URL in `values/alloy-values.yaml` doesn't
+  match where Loki is actually reachable from inside the cluster (in
+  particular, an external IP that's unreachable from pod network).
+- Using `loki.source.file` instead of `loki.source.kubernetes` — the
+  former needs direct filesystem access to container logs and is more
+  fragile in containerized environments. Use `loki.source.kubernetes`.
+
+Confirm Loki itself is receiving data:
+
+```bash
+curl http://<loki-host>:3100/api/prom/label
+```
+
+## Prometheus StatefulSet never becomes Ready
+
+Confirm `prometheusOperator.enabled: true` is explicitly set in your
+values file — leaving it at the chart default has caused this exact
+symptom in testing. See `values/prometheus-values.yaml`.

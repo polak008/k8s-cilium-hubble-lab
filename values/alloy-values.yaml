@@ -1,0 +1,90 @@
+# Grafana Alloy values — ships pod logs from every node to Loki.
+#
+# This is the final working pipeline after multiple failed attempts using
+# loki.process / loki.relabel / loki.source.file / loki.source.podlogs
+# component combinations (see values-02.yaml through values-10.yaml in the
+# project history for the dead ends). The combination that actually
+# delivers logs to Loki is:
+#
+#   discovery.kubernetes  -> discovers all pods across the cluster
+#   discovery.relabel     -> attaches namespace/pod/container/node/app labels
+#   loki.source.kubernetes -> tails each pod's logs via the Kubernetes API
+#                              (NOT loki.source.file — that requires direct
+#                              filesystem access to container log files,
+#                              which is unnecessary complexity here)
+#   loki.write             -> ships the labeled log lines to Loki
+#
+# IMPORTANT: update the Loki endpoint IP below to match wherever Loki's
+# service is actually reachable from (this cluster used a Loki instance
+# exposed at 192.168.56.116:3100 on a separate host/VM — adjust to your
+# own Loki service's ClusterIP/NodePort).
+#
+# Apply with:
+#   helm upgrade --install alloy grafana/alloy \
+#     --namespace alloy-system --create-namespace \
+#     -f values/alloy-values.yaml
+
+controller:
+  # DaemonSet ensures one Alloy pod per node so every node's logs are collected.
+  type: daemonset
+
+service:
+  enabled: true
+  type: NodePort
+  nodePort: 31128
+
+alloy:
+  configMap:
+    create: true
+    content: |
+      discovery.kubernetes "pods" {
+        role = "pod"
+      }
+
+      discovery.relabel "pod_logs" {
+        targets = discovery.kubernetes.pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label = "namespace"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label = "pod"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label = "container"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_node_name"]
+          target_label = "node"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app"]
+          target_label = "app"
+        }
+      }
+
+      loki.source.kubernetes "pods" {
+        targets    = discovery.relabel.pod_logs.output
+        forward_to = [loki.write.default.receiver]
+      }
+
+      loki.write "default" {
+        endpoint {
+          url = "http://192.168.56.116:3100/loki/api/v1/push"
+        }
+      }
+
+rbac:
+  # Alloy needs cluster-wide read access to pod metadata for discovery.kubernetes
+  create: true
+
+serviceAccount:
+  create: true
+  automountServiceAccountToken: true

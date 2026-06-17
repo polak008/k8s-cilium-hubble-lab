@@ -44,11 +44,15 @@ k8s-cilium-hubble-lab/
 ├── manifests/
 │   ├── kubeadm-config.yaml    # kubeadm InitConfiguration + ClusterConfiguration
 │   ├── namespaces/            # (optional) namespace manifests
-│   ├── monitoring/            # (optional) monitoring stack manifests
+│   ├── monitoring/
+│   │   └── dashboards/        # Grafana dashboard JSON exports
 │   └── gitops/                # (optional) ArgoCD app manifests
 ├── values/
 │   ├── cilium-values.yaml          # Helm values for Cilium
-│   └── metrics-server-values.yaml  # Helm values for Metrics Server
+│   ├── metrics-server-values.yaml  # Helm values for Metrics Server
+│   ├── loki-values.yaml             # Helm values for Loki (all-in-one)
+│   ├── alloy-values.yaml            # Helm values for Grafana Alloy (log shipper)
+│   └── prometheus-values.yaml       # Helm values for kube-prometheus-stack
 └── scripts/
     ├── 00-common-setup.sh          # Run on EVERY node (control-plane + workers)
     ├── 01-init-control-plane.sh    # Control-plane only: kubeadm init
@@ -56,7 +60,9 @@ k8s-cilium-hubble-lab/
     ├── 03-install-cilium.sh        # Install Cilium CLI + Helm chart
     ├── 04-install-metrics-server.sh
     ├── 05-install-dashboard.sh
-    └── 06-validate-cluster.sh      # Health check across the cluster
+    ├── 06-validate-cluster.sh      # Health check across the cluster
+    ├── 07-install-loki-alloy.sh    # Logging: Loki + Alloy (log collector)
+    └── 08-install-prometheus.sh    # Metrics: kube-prometheus-stack
 ```
 
 Every script has a detailed comment header explaining what it does, why,
@@ -127,6 +133,59 @@ kubectl get nodes -o wide   # confirm all workers show up
 ./scripts/06-validate-cluster.sh
 ```
 
+---
+
+## Observability Stack (Logging + Metrics)
+
+This lab also includes a working logging and metrics pipeline, captured
+after several rounds of trial and error (see comments in the values files
+for what didn't work and why).
+
+```bash
+# Logging: Loki (storage) + Grafana Alloy (per-node log collector)
+./scripts/07-install-loki-alloy.sh
+
+# Metrics: kube-prometheus-stack (Prometheus + Operator + node-exporter)
+./scripts/08-install-prometheus.sh
+```
+
+**Before running**, edit the endpoint URLs in `values/alloy-values.yaml`
+(`loki.write` endpoint) and `values/prometheus-values.yaml`
+(`remoteWrite` endpoint) to match your own Loki/remote-metrics
+destination. This lab originally pointed both at a separate
+observability host (`192.168.56.116`) — adjust to wherever your Loki
+and remote-write receiver actually live, or remove `remoteWrite` from
+the Prometheus values if you only want to query Prometheus directly
+in-cluster.
+
+### Why these specific configs
+
+**Loki** runs in `target: all-in-one` mode with local filesystem storage.
+The chart's default "scalable" target expects object storage and
+separate read/write/backend components — overkill for a single-node lab,
+and the actual source of most early failures.
+
+**Alloy** uses `discovery.kubernetes` → `discovery.relabel` →
+`loki.source.kubernetes` → `loki.write`. Several alternative component
+chains (`loki.process`, `loki.source.file`, `loki.source.podlogs`) were
+tried and abandoned — `loki.source.kubernetes` tails pod logs via the
+Kubernetes API directly, which is simpler than requiring filesystem
+access to container log files on each node.
+
+**Prometheus** (via kube-prometheus-stack) requires
+`prometheusOperator.enabled: true` set explicitly — leaving it at the
+chart default caused the Prometheus StatefulSet to never reconcile in
+testing. Grafana and Alertmanager are disabled since this lab visualizes
+everything through an external Grafana instance instead.
+
+### Access points
+
+| Component | How to reach it |
+|---|---|
+| Alloy (metrics/status) | `http://<node-ip>:31128` |
+| Loki | Query via Grafana, or directly: `curl http://<loki-host>:3100/api/prom/label` |
+| Prometheus UI | Not exposed by default — see comment in `08-install-prometheus.sh` for the NodePort command |
+
 For the full explanation of every step — including **why** each setting is
 used — see [docs/setup-guide.md](docs/setup-guide.md).
 
@@ -138,6 +197,7 @@ used — see [docs/setup-guide.md](docs/setup-guide.md).
 |---|---|---|
 | Hubble UI | 32121 | `http://<node-ip>:32121` |
 | Kubernetes Dashboard | 32688 | `https://<node-ip>:32688` |
+| Grafana Alloy | 31128 | `http://<node-ip>:31128` |
 
 Get the Dashboard login token:
 
@@ -179,6 +239,9 @@ issues including:
 - NodePort unreachable (UFW / firewall)
 - containerd pause image mismatches
 - Expired kubeadm join tokens
+- Loki "Cannot run scalable target" errors
+- Alloy pods running but logs not reaching Loki
+- Prometheus StatefulSet never becoming Ready
 
 ---
 

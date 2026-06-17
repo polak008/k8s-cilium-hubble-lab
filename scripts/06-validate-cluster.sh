@@ -59,3 +59,12 @@ kubectl top pods -A || true
 echo ""
 echo "### 7. Services exposing NodePorts"
 kubectl get svc -A | grep NodePort
+
+echo ""
+echo "### 8. Observability stack (if installed)"
+echo "--- Loki ---"
+kubectl get pods -n loki-system 2>/dev/null || echo "(loki-system namespace not found — see scripts/07-install-loki-alloy.sh)"
+echo "--- Alloy ---"
+kubectl get pods -n alloy-system 2>/dev/null || echo "(alloy-system namespace not found — see scripts/07-install-loki-alloy.sh)"
+echo "--- Prometheus ---"
+kubectl get pods -n prometheus 2>/dev/null || echo "(prometheus namespace not found — see scripts/08-install-prometheus.sh)"
